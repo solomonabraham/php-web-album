@@ -1,13 +1,10 @@
 <?php
 /**
  * Wedding Gallery - Maintenance Tool
- * Cleans up orphaned thumbnails and syncs new images
+ * Cleans up orphaned images and syncs new images
+ * Now supports web-optimized images for faster lightbox loading
  * Run manually or via cron job
  */
-
-// Prevent direct access from web (optional security)
-// Uncomment to require command line only:
-// if (php_sapi_name() !== 'cli') die('CLI only');
 
 set_time_limit(0); // No timeout
 ini_set('memory_limit', '1G');
@@ -17,6 +14,7 @@ $config = include __DIR__ . "/config.php";
 
 $mediaDir = $config['mediaDir'];
 $thumbDir = $mediaDir . '/thumbnails';
+$webOptimizedDir = $mediaDir . '/web-optimized';
 $imageExtensions = $config['imageExtensions'];
 $videoExtensions = $config['videoExtensions'];
 
@@ -38,7 +36,7 @@ function output($message, $type = 'info') {
 }
 
 output("===========================================", 'info');
-output("Wedding Gallery Maintenance Tool", 'info');
+output("Wedding Gallery Maintenance Tool v2.2", 'info');
 output("===========================================", 'info');
 output("");
 
@@ -49,6 +47,7 @@ output("Step 1: Scanning media directory...", 'info');
 
 $mediaFiles = [];
 $thumbFolderName = basename($thumbDir);
+$webOptimizedFolderName = basename($webOptimizedDir);
 
 if (!is_dir($mediaDir)) {
     output("ERROR: Media directory not found: $mediaDir", 'error');
@@ -57,7 +56,10 @@ if (!is_dir($mediaDir)) {
 
 $subfolders = glob($mediaDir . '/*', GLOB_ONLYDIR);
 if ($subfolders === false) $subfolders = [];
-$subfolders = array_filter($subfolders, fn($f) => basename($f) !== $thumbFolderName && !str_starts_with(basename($f), '.'));
+$subfolders = array_filter($subfolders, fn($f) => 
+    !in_array(basename($f), [$thumbFolderName, $webOptimizedFolderName]) && 
+    !str_starts_with(basename($f), '.')
+);
 
 foreach ($subfolders as $albumPath) {
     $albumName = basename($albumPath);
@@ -92,47 +94,71 @@ output("Found " . count($mediaFiles) . " media files in " . count($subfolders) .
 output("");
 
 // ============================================
-// 2. SCAN THUMBNAIL DIRECTORY
+// 2. SCAN IMAGE DIRECTORIES
 // ============================================
-output("Step 2: Scanning thumbnail directory...", 'info');
+output("Step 2: Scanning thumbnail and web-optimized directories...", 'info');
 
-$existingThumbs = [];
-
+// Create directories if they don't exist
 if (!is_dir($thumbDir)) {
     mkdir($thumbDir, 0755, true);
     output("Created thumbnail directory", 'success');
-} else {
-    $thumbSubfolders = glob($thumbDir . '/*', GLOB_ONLYDIR);
-    if ($thumbSubfolders === false) $thumbSubfolders = [];
+}
+
+if (!is_dir($webOptimizedDir)) {
+    mkdir($webOptimizedDir, 0755, true);
+    output("Created web-optimized directory", 'success');
+}
+
+$existingThumbs = [];
+$existingWebOptimized = [];
+
+// Scan thumbnails
+$thumbSubfolders = glob($thumbDir . '/*', GLOB_ONLYDIR);
+if ($thumbSubfolders === false) $thumbSubfolders = [];
+
+foreach ($thumbSubfolders as $thumbAlbumPath) {
+    $albumName = basename($thumbAlbumPath);
+    $thumbFiles = @scandir($thumbAlbumPath);
+    if ($thumbFiles === false) continue;
     
-    foreach ($thumbSubfolders as $thumbAlbumPath) {
-        $albumName = basename($thumbAlbumPath);
-        $thumbFiles = @scandir($thumbAlbumPath);
-        if ($thumbFiles === false) continue;
-        
-        foreach ($thumbFiles as $thumbFile) {
-            if ($thumbFile === '.' || $thumbFile === '..') continue;
-            $existingThumbs["$albumName/$thumbFile"] = "$thumbAlbumPath/$thumbFile";
-        }
+    foreach ($thumbFiles as $thumbFile) {
+        if ($thumbFile === '.' || $thumbFile === '..') continue;
+        $existingThumbs["$albumName/$thumbFile"] = "$thumbAlbumPath/$thumbFile";
     }
 }
 
-output("Found " . count($existingThumbs) . " existing thumbnails", 'success');
+// Scan web-optimized
+$webOptimizedSubfolders = glob($webOptimizedDir . '/*', GLOB_ONLYDIR);
+if ($webOptimizedSubfolders === false) $webOptimizedSubfolders = [];
+
+foreach ($webOptimizedSubfolders as $webOptimizedAlbumPath) {
+    $albumName = basename($webOptimizedAlbumPath);
+    $webOptimizedFiles = @scandir($webOptimizedAlbumPath);
+    if ($webOptimizedFiles === false) continue;
+    
+    foreach ($webOptimizedFiles as $webOptimizedFile) {
+        if ($webOptimizedFile === '.' || $webOptimizedFile === '..') continue;
+        $existingWebOptimized["$albumName/$webOptimizedFile"] = "$webOptimizedAlbumPath/$webOptimizedFile";
+    }
+}
+
+output("Found " . count($existingThumbs) . " thumbnails", 'success');
+output("Found " . count($existingWebOptimized) . " web-optimized images", 'success');
 output("");
 
 // ============================================
-// 3. FIND ORPHANED THUMBNAILS
+// 3. FIND ORPHANED IMAGES
 // ============================================
-output("Step 3: Finding orphaned thumbnails...", 'info');
+output("Step 3: Finding orphaned images...", 'info');
 
 $orphanedThumbs = [];
+$orphanedWebOptimized = [];
 
+// Check thumbnails
 foreach ($existingThumbs as $key => $thumbPath) {
     list($albumName, $thumbFile) = explode('/', $key, 2);
     
-    // Check if original media file exists
     $foundOriginal = false;
-    
     foreach ($mediaFiles as $mediaKey => $mediaInfo) {
         if ($mediaInfo['album'] === $albumName && $mediaInfo['thumbFile'] === $thumbFile) {
             $foundOriginal = true;
@@ -145,8 +171,27 @@ foreach ($existingThumbs as $key => $thumbPath) {
     }
 }
 
-if (count($orphanedThumbs) > 0) {
-    output("Found " . count($orphanedThumbs) . " orphaned thumbnails", 'warning');
+// Check web-optimized
+foreach ($existingWebOptimized as $key => $webOptimizedPath) {
+    list($albumName, $webOptimizedFile) = explode('/', $key, 2);
+    
+    $foundOriginal = false;
+    foreach ($mediaFiles as $mediaKey => $mediaInfo) {
+        if ($mediaInfo['album'] === $albumName && $mediaInfo['thumbFile'] === $webOptimizedFile) {
+            $foundOriginal = true;
+            break;
+        }
+    }
+    
+    if (!$foundOriginal) {
+        $orphanedWebOptimized[] = $webOptimizedPath;
+    }
+}
+
+$totalOrphaned = count($orphanedThumbs) + count($orphanedWebOptimized);
+
+if ($totalOrphaned > 0) {
+    output("Found $totalOrphaned orphaned images (" . count($orphanedThumbs) . " thumbnails, " . count($orphanedWebOptimized) . " web-optimized)", 'warning');
     
     // Delete orphaned thumbnails
     $deleted = 0;
@@ -156,46 +201,63 @@ if (count($orphanedThumbs) > 0) {
         }
     }
     
-    output("Deleted $deleted orphaned thumbnails", 'success');
+    // Delete orphaned web-optimized
+    foreach ($orphanedWebOptimized as $webOptimizedPath) {
+        if (@unlink($webOptimizedPath)) {
+            $deleted++;
+        }
+    }
+    
+    output("Deleted $deleted orphaned images", 'success');
     
     // Clean up empty album folders
-    $thumbSubfolders = glob($thumbDir . '/*', GLOB_ONLYDIR);
-    foreach ($thumbSubfolders as $thumbAlbumPath) {
-        $files = @scandir($thumbAlbumPath);
-        if ($files && count($files) === 2) { // Only . and ..
-            @rmdir($thumbAlbumPath);
-            output("Removed empty folder: " . basename($thumbAlbumPath), 'success');
+    foreach ([$thumbDir, $webOptimizedDir] as $dir) {
+        $subfolders = glob($dir . '/*', GLOB_ONLYDIR);
+        foreach ($subfolders as $albumPath) {
+            $files = @scandir($albumPath);
+            if ($files && count($files) === 2) { // Only . and ..
+                @rmdir($albumPath);
+                output("Removed empty folder: " . basename($dir) . "/" . basename($albumPath), 'success');
+            }
         }
     }
 } else {
-    output("No orphaned thumbnails found", 'success');
+    output("No orphaned images found", 'success');
 }
 
 output("");
 
 // ============================================
-// 4. FIND MISSING THUMBNAILS
+// 4. FIND MISSING IMAGES
 // ============================================
-output("Step 4: Finding missing thumbnails...", 'info');
+output("Step 4: Finding missing thumbnails and web-optimized images...", 'info');
 
 $missingThumbs = [];
+$missingWebOptimized = [];
 
 foreach ($mediaFiles as $key => $mediaInfo) {
-    $thumbKey = $mediaInfo['album'] . '/' . $mediaInfo['thumbFile'];
+    $imageKey = $mediaInfo['album'] . '/' . $mediaInfo['thumbFile'];
     
-    if (!isset($existingThumbs[$thumbKey])) {
+    if (!isset($existingThumbs[$imageKey])) {
         $missingThumbs[] = $mediaInfo;
+    }
+    
+    if (!isset($existingWebOptimized[$imageKey])) {
+        $missingWebOptimized[] = $mediaInfo;
     }
 }
 
-if (count($missingThumbs) > 0) {
-    output("Found " . count($missingThumbs) . " missing thumbnails", 'warning');
-    output("Generating thumbnails (this may take a while)...", 'info');
+$totalMissing = count($missingThumbs) + count($missingWebOptimized);
+
+if ($totalMissing > 0) {
+    output("Found $totalMissing missing images (" . count($missingThumbs) . " thumbnails, " . count($missingWebOptimized) . " web-optimized)", 'warning');
+    output("Generating images (this may take a while)...", 'info');
     
-    // Generate missing thumbnails
-    $generated = 0;
+    $generatedThumbs = 0;
+    $generatedWebOptimized = 0;
     $errors = 0;
     
+    // Generate missing thumbnails
     foreach ($missingThumbs as $index => $mediaInfo) {
         $albumName = $mediaInfo['album'];
         $thumbAlbumDir = "$thumbDir/$albumName";
@@ -206,34 +268,69 @@ if (count($missingThumbs) > 0) {
         
         $thumbPath = "$thumbAlbumDir/{$mediaInfo['thumbFile']}";
         
-        // Progress indicator
         if ($index % 10 === 0) {
-            output("Progress: " . ($index + 1) . "/" . count($missingThumbs), 'info');
+            output("Thumbnails: " . ($index + 1) . "/" . count($missingThumbs), 'info');
         }
         
         if ($mediaInfo['type'] === 'image') {
             if (createThumbnail($mediaInfo['path'], $thumbPath)) {
-                $generated++;
+                $generatedThumbs++;
             } else {
                 $errors++;
-                output("Failed: {$mediaInfo['album']}/{$mediaInfo['file']}", 'error');
+                output("Failed thumbnail: {$mediaInfo['album']}/{$mediaInfo['file']}", 'error');
             }
         } elseif ($mediaInfo['type'] === 'video') {
             if (createVideoThumbnail($mediaInfo['path'], $thumbPath)) {
-                $generated++;
+                $generatedThumbs++;
             } else {
                 $errors++;
-                output("Failed: {$mediaInfo['album']}/{$mediaInfo['file']}", 'error');
+                output("Failed thumbnail: {$mediaInfo['album']}/{$mediaInfo['file']}", 'error');
             }
         }
     }
     
-    output("Generated $generated thumbnails", 'success');
+    // Generate missing web-optimized
+    foreach ($missingWebOptimized as $index => $mediaInfo) {
+        $albumName = $mediaInfo['album'];
+        $webOptimizedAlbumDir = "$webOptimizedDir/$albumName";
+        
+        if (!is_dir($webOptimizedAlbumDir)) {
+            mkdir($webOptimizedAlbumDir, 0755, true);
+        }
+        
+        $webOptimizedPath = "$webOptimizedAlbumDir/{$mediaInfo['thumbFile']}";
+        
+        if ($index % 10 === 0) {
+            output("Web-optimized: " . ($index + 1) . "/" . count($missingWebOptimized), 'info');
+        }
+        
+        if ($mediaInfo['type'] === 'image') {
+            if (createWebOptimizedImage($mediaInfo['path'], $webOptimizedPath)) {
+                $generatedWebOptimized++;
+            } else {
+                $errors++;
+                output("Failed web-optimized: {$mediaInfo['album']}/{$mediaInfo['file']}", 'error');
+            }
+        } elseif ($mediaInfo['type'] === 'video') {
+            // For videos, copy thumbnail as web-optimized
+            $thumbPath = "$thumbDir/$albumName/{$mediaInfo['thumbFile']}";
+            if (file_exists($thumbPath)) {
+                if (copy($thumbPath, $webOptimizedPath)) {
+                    $generatedWebOptimized++;
+                } else {
+                    $errors++;
+                }
+            }
+        }
+    }
+    
+    output("Generated $generatedThumbs thumbnails", 'success');
+    output("Generated $generatedWebOptimized web-optimized images", 'success');
     if ($errors > 0) {
-        output("Failed to generate $errors thumbnails", 'error');
+        output("Failed to generate $errors images", 'error');
     }
 } else {
-    output("All thumbnails are up to date", 'success');
+    output("All images are up to date", 'success');
 }
 
 output("");
@@ -261,21 +358,24 @@ output("Maintenance Complete!", 'success');
 output("===========================================", 'info');
 output("Media files: " . count($mediaFiles), 'info');
 output("Thumbnails: " . count($existingThumbs), 'info');
-output("Orphaned cleaned: " . count($orphanedThumbs), 'info');
-output("Generated: " . ($generated ?? 0), 'info');
+output("Web-optimized: " . count($existingWebOptimized), 'info');
+output("Orphaned cleaned: $totalOrphaned", 'info');
+output("Generated thumbnails: " . ($generatedThumbs ?? 0), 'info');
+output("Generated web-optimized: " . ($generatedWebOptimized ?? 0), 'info');
 output("");
 
 ErrorLogger::info('Maintenance completed', [
     'media_files' => count($mediaFiles),
-    'orphaned_cleaned' => count($orphanedThumbs),
-    'generated' => $generated ?? 0
+    'orphaned_cleaned' => $totalOrphaned,
+    'generated_thumbs' => $generatedThumbs ?? 0,
+    'generated_web_optimized' => $generatedWebOptimized ?? 0
 ]);
 
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
 
-function createThumbnail($source, $dest, $maxWidth = 1200, $maxHeight = 900) {
+function createThumbnail($source, $dest, $maxWidth = 1200, $maxHeight = 900, $quality = 85) {
     if (!file_exists($source)) return false;
     
     try {
@@ -320,7 +420,7 @@ function createThumbnail($source, $dest, $maxWidth = 1200, $maxHeight = 900) {
         }
         
         imagecopyresampled($thumb, $img, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-        $result = imagejpeg($thumb, $dest, 85);
+        $result = imagejpeg($thumb, $dest, $quality);
         
         imagedestroy($img);
         imagedestroy($thumb);
@@ -330,6 +430,15 @@ function createThumbnail($source, $dest, $maxWidth = 1200, $maxHeight = 900) {
     } catch (Exception $e) {
         return false;
     }
+}
+
+function createWebOptimizedImage($source, $dest) {
+    global $config;
+    $maxWidth = $config['webOptimizedWidth'] ?? 2000;
+    $maxHeight = $config['webOptimizedHeight'] ?? 2000;
+    $quality = $config['webOptimizedQuality'] ?? 82;
+    
+    return createThumbnail($source, $dest, $maxWidth, $maxHeight, $quality);
 }
 
 function createVideoThumbnail($source, $dest) {
@@ -351,4 +460,9 @@ function createVideoThumbnail($source, $dest) {
 }
 
 output("Done! You can now refresh your gallery.", 'success');
+output("");
+output("Note: The gallery now uses two image versions:", 'info');
+output("  - Thumbnails: Fast loading for gallery grid", 'info');
+output("  - Web-optimized: Good quality for lightbox viewing", 'info');
+output("  - Originals: Full quality for downloads", 'info');
 ?>

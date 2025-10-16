@@ -2,7 +2,7 @@
 
 A beautiful, modern, and highly optimized PHP-based wedding photo gallery with advanced features including lightbox viewing, custom downloads, theme switching, and automatic thumbnail management.
 
-![Version](https://img.shields.io/badge/version-2.1-blue)
+![Version](https://img.shields.io/badge/version-2.2-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.0+-purple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -19,11 +19,12 @@ A beautiful, modern, and highly optimized PHP-based wedding photo gallery with a
 - **♾️ Infinite Scroll** - Smooth pagination with automatic content loading
 
 ### Advanced Features
-- **💾 Native Download Button** - Custom download functionality in lightbox view
+- **💾 Native Download Button** - Custom download functionality with full-quality originals
 - **🔍 Lightbox Gallery** - GLightbox integration with zoom and navigation
+- **⚡ Web-Optimized Images** - Fast-loading optimized images in lightbox, full quality for downloads
 - **📁 Album Organization** - Organize photos into multiple albums
 - **🖼️ Smart Thumbnails** - Automatic thumbnail generation with cleanup
-- **📊 Auto-Sync** - Background thumbnail generation on page load
+- **📊 Auto-Sync** - Background image generation on page load
 - **🧹 Maintenance Tools** - Built-in maintenance script for optimization
 - **📝 Error Logging** - Comprehensive logging system for debugging
 - **🎯 SEO Optimized** - Proper meta tags and semantic HTML
@@ -151,15 +152,43 @@ Copy the output and paste it as `galleryPassword`, then set `useHashedPassword` 
 
 ### Performance Settings
 ```php
-'autoSyncEnabled' => true,        // Auto-generate thumbnails
-'autoSyncLimit' => 20,            // Max thumbnails per page load
-'autoCleanupEnabled' => true,     // Auto-cleanup orphaned thumbnails
+'autoSyncEnabled' => true,        // Auto-generate images
+'autoSyncLimit' => 20,            // Max images per page load
+'autoCleanupEnabled' => true,     // Auto-cleanup orphaned images
 'autoCleanupInterval' => 3600,    // Cleanup interval (seconds)
 'itemsPerPage' => 50,             // Photos per page
 'thumbnailWidth' => 1200,
 'thumbnailHeight' => 900,
 'thumbnailQuality' => 85,
 ```
+
+### Web-Optimized Image Settings
+The gallery uses **three versions** of each image for optimal performance:
+
+```php
+// Thumbnails - for gallery grid (fast loading)
+'thumbnailWidth' => 1200,
+'thumbnailHeight' => 900,
+'thumbnailQuality' => 85,
+
+// Web-Optimized - for lightbox viewing (balanced)
+'webOptimizedWidth' => 2000,
+'webOptimizedHeight' => 2000,
+'webOptimizedQuality' => 82,
+
+// Originals - for downloads (full quality)
+// Stored in your album folders
+```
+
+**How it works:**
+1. **Gallery Grid**: Shows small thumbnails for fast scrolling
+2. **Lightbox View**: Displays web-optimized images (good quality, fast loading)
+3. **Downloads**: Provides full-quality original files
+
+This approach ensures:
+- ⚡ Lightning-fast gallery browsing
+- 👀 Beautiful lightbox viewing experience  
+- 📥 High-quality downloads for users
 
 ## 📂 Directory Structure
 
@@ -171,9 +200,10 @@ wedding-gallery/
 ├── maintenance.php        # Maintenance tool
 ├── styles.css             # Stylesheet
 ├── media/                 # Media directory
-│   ├── album1/           # Album folders
+│   ├── album1/           # Album folders (originals)
 │   ├── album2/
-│   └── thumbnails/       # Auto-generated thumbnails
+│   ├── thumbnails/       # Auto-generated thumbnails
+│   └── web-optimized/    # Auto-generated web-optimized images
 ├── cache/                # Cache directory
 │   ├── gallery_cache.json
 │   └── last_cleanup.txt
@@ -217,11 +247,12 @@ php maintenance.php
 
 ### What Maintenance Does
 1. **Scans Media Directory** - Finds all photos and videos
-2. **Scans Thumbnails** - Identifies existing thumbnails
-3. **Finds Orphaned Thumbnails** - Detects thumbnails without originals
-4. **Cleans Up** - Deletes orphaned thumbnails
+2. **Scans Image Directories** - Identifies existing thumbnails and web-optimized images
+3. **Finds Orphaned Images** - Detects images without originals
+4. **Cleans Up** - Deletes orphaned thumbnails and web-optimized images
 5. **Generates Missing Thumbnails** - Creates thumbnails for new media
-6. **Clears Cache** - Refreshes gallery cache
+6. **Generates Missing Web-Optimized** - Creates optimized images for lightbox
+7. **Clears Cache** - Refreshes gallery cache
 
 ### Automated Maintenance (Cron)
 Set up a cron job for automatic maintenance:
@@ -270,10 +301,17 @@ Then update CSS:
 
 ### Thumbnails Not Generating
 **Solution:**
-1. Check folder permissions: `chmod 755 media/thumbnails`
+1. Check folder permissions: `chmod 755 media/thumbnails media/web-optimized`
 2. Verify GD library: `php -m | grep gd`
 3. Increase memory limit in `config.php`
 4. Run maintenance script manually
+
+### Web-Optimized Images Not Showing
+**Solution:**
+1. Run maintenance script to generate missing images
+2. Check permissions: `chmod 755 media/web-optimized`
+3. Verify the directory exists and is writable
+4. Check error logs in `logs/gallery.log`
 
 ### Video Thumbnails Not Working
 **Solution:**
@@ -317,12 +355,17 @@ chown www-data:www-data media/thumbnails
    - Use JPEG for photos, PNG for graphics
    - Compress images before uploading
 
-2. **Enable Server Caching**
+2. **Web-Optimized Settings**
+   - Default settings (2000px, 82% quality) provide excellent balance
+   - Lower `webOptimizedQuality` to 75-80 for smaller file sizes
+   - Increase to 85-90 for better quality (larger files)
+
+3. **Enable Server Caching**
    - Use .htaccess for browser caching
    - Enable gzip compression
    - Use CDN for static assets
 
-3. **Configure PHP**
+4. **Configure PHP**
    ```ini
    memory_limit = 1G
    max_execution_time = 300
@@ -330,10 +373,15 @@ chown www-data:www-data media/thumbnails
    post_max_size = 100M
    ```
 
-4. **Database-Free Architecture**
+5. **Database-Free Architecture**
    - No database required
    - File-based caching
    - Minimal server overhead
+
+6. **Image Quality Guide**
+   - **Thumbnails**: 85% (visible in grid, needs to be crisp)
+   - **Web-Optimized**: 82% (lightbox viewing, best balance)
+   - **Originals**: 100% (downloads, preserve all quality)
 
 ## 🔐 Security Best Practices
 
@@ -398,6 +446,14 @@ For issues, questions, or feature requests:
 3. Consult the configuration documentation
 
 ## 🔄 Updates
+
+### Version 2.2 (Current)
+- **Web-Optimized Images**: Separate optimized images for lightbox viewing
+- Fast-loading gallery with high-quality lightbox experience
+- Full-quality originals provided for downloads
+- Three-tier image system: thumbnails, web-optimized, originals
+- Enhanced maintenance script for multi-version image management
+- Improved responsive slider scaling for all devices
 
 ### Version 2.1
 - Enhanced lightbox with custom download button

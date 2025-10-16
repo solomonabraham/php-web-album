@@ -48,7 +48,7 @@ return [
         'autoplayDelay' => 5000,                 // Milliseconds between slides
         'effect' => 'fade',                      // 'fade', 'slide', 'cube', 'coverflow', 'flip'
         'speed' => 1200,                         // Transition speed in ms
-        'showNavigation' => false,                // Show prev/next arrows
+        'showNavigation' => false,               // Show prev/next arrows
         'showPagination' => true,                // Show dots
         'loop' => true,                          // Loop slides
         'slidesCount' => 10,                     // Number of images in slider
@@ -67,17 +67,26 @@ return [
     // AUTO-SYNC SETTINGS
     // ============================================
     'autoSyncEnabled' => true,                   // Automatic thumbnail generation on page load
-    'autoSyncLimit' => 20,                       // Max thumbnails to generate per page load
-    'autoCleanupEnabled' => true,                // Automatic cleanup of orphaned thumbnails
+    'autoSyncLimit' => 20,                       // Max images to generate per page load
+    'autoCleanupEnabled' => true,                // Automatic cleanup of orphaned images
     'autoCleanupInterval' => 3600,               // Cleanup check interval (seconds)
-    'autoCleanupLimit' => 5,                     // Max thumbnails to clean per check
+    'autoCleanupLimit' => 5,                     // Max images to clean per check
     
     // ============================================
-    // THUMBNAIL SETTINGS
+    // THUMBNAIL SETTINGS (for gallery grid)
     // ============================================
     'thumbnailWidth' => 1200,
     'thumbnailHeight' => 900,
     'thumbnailQuality' => 85,
+    
+    // ============================================
+    // WEB-OPTIMIZED SETTINGS (for lightbox viewing)
+    // These are shown in the lightbox for fast loading
+    // Originals are used for downloads
+    // ============================================
+    'webOptimizedWidth' => 2000,                 // Max width for lightbox images
+    'webOptimizedHeight' => 2000,                // Max height for lightbox images
+    'webOptimizedQuality' => 82,                 // JPEG quality (60-95, 82 recommended)
     
     // ============================================
     // CACHE SETTINGS
