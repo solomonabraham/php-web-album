@@ -874,7 +874,35 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
       
       function init() {
         document.body.classList.add('loaded');
+        adjustStickyElements(); // NEW: Adjust sticky positioning
         initGallery();
+      }
+      
+      // NEW: Adjust sticky navigation and footer
+      function adjustStickyElements() {
+        // Adjust album navigation to stick below header
+        const header = document.querySelector('header');
+        const albumNav = document.querySelector('.album-nav');
+        
+        if (header && albumNav) {
+          const headerHeight = header.offsetHeight;
+          albumNav.style.top = `${headerHeight}px`;
+        }
+        
+        // Adjust content padding for sticky footer
+        const footer = document.querySelector('footer');
+        const main = document.querySelector('main');
+        
+        if (footer && main) {
+          const footerHeight = footer.offsetHeight;
+          const currentPadding = parseInt(window.getComputedStyle(main).paddingBottom);
+          if (currentPadding < footerHeight) {
+            main.style.paddingBottom = `${footerHeight + 20}px`;
+          }
+        }
+        
+        // Re-adjust on window resize
+        window.addEventListener('resize', adjustStickyElements);
       }
       
       function initGallery() {
@@ -946,9 +974,27 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
             autoplayVideos: false
           });
           
-          lightboxInstance.on('open', () => setTimeout(() => injectDownloadButton(), 150));
+          // Hide footer when lightbox opens
+          const footer = document.querySelector('footer');
+          
+          lightboxInstance.on('open', () => {
+            setTimeout(() => injectDownloadButton(), 150);
+            if (footer) {
+              footer.style.opacity = '0';
+              footer.style.pointerEvents = 'none';
+              footer.style.transition = 'opacity 0.3s ease';
+            }
+          });
+          
           lightboxInstance.on('slide_changed', () => setTimeout(() => injectDownloadButton(), 150));
-          lightboxInstance.on('close', () => removeDownloadButton());
+          
+          lightboxInstance.on('close', () => {
+            removeDownloadButton();
+            if (footer) {
+              footer.style.opacity = '1';
+              footer.style.pointerEvents = 'auto';
+            }
+          });
           
         } catch (error) {
           console.error('GLightbox error:', error);

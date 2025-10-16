@@ -10,8 +10,9 @@ A beautiful, modern, and highly optimized PHP-based wedding photo gallery with a
 
 ### Core Features
 - **📸 Beautiful Photo Gallery** - Responsive mosaic layout with dynamic grid patterns
-- **🎬 Video Support** - Display videos with thumbnail previews and inline playback
-- **🎨 Elegant Hero Slider** - Configurable homepage slider with multiple transition effects
+- **🎬 Fullscreen Hero Slider** - Stunning fullscreen slider with Ken Burns effects
+- **📌 Sticky Navigation** - Header and album menu stay visible while scrolling
+- **🎥 Video Support** - Display videos with thumbnail previews and inline playback
 - **🔒 Password Protection** - Optional password protection with rate limiting
 - **🌓 Dark/Light Theme** - Seamless theme switching with localStorage persistence
 - **📱 Fully Responsive** - Optimized for all devices (mobile, tablet, desktop)
@@ -447,13 +448,30 @@ For issues, questions, or feature requests:
 
 ## 🔄 Updates
 
-### Version 2.2 (Current)
+### Version 2.2.2 (Current)
+- **Sticky Header**: Header stays at top with backdrop blur effect
+- **Sticky Album Navigation**: Album menu sticks below header
+- **Fixed Footer**: Footer always visible at bottom with auto-hide in lightbox
+- **Smart Positioning**: JavaScript auto-adjusts sticky elements
+- **Enhanced Mobile**: Optimized sticky behavior for mobile devices
+- **Backdrop Blur**: Modern glass-morphism effects on navigation elements
+
+### Version 2.2.1
+- **Fullscreen Slider**: 100vh slider on all devices for dramatic impact
+- **Enhanced Ken Burns Effect**: Slow zoom with subtle pan (15s duration)
+- **Animated Overlays**: Subtle pulse effect on gradient overlay
+- **Enhanced Navigation**: Larger buttons with pulse and glow effects
+- **Scroll Indicator**: Animated scroll hint at bottom of slider
+- **Centered Content**: Text centered on screen for better composition
+- **Dramatic Animations**: Bounce and scale effects on text entrance
+- **Active Slide Transitions**: Fade effects between slides
+
+### Version 2.2
 - **Web-Optimized Images**: Separate optimized images for lightbox viewing
 - Fast-loading gallery with high-quality lightbox experience
 - Full-quality originals provided for downloads
 - Three-tier image system: thumbnails, web-optimized, originals
 - Enhanced maintenance script for multi-version image management
-- Improved responsive slider scaling for all devices
 
 ### Version 2.1
 - Enhanced lightbox with custom download button
