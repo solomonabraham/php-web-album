@@ -1,0 +1,45 @@
+{
+    "galleryTitle": "Melvin & Elizabath",
+    "welcomeMessage": "We're so glad you're here to share in our joy! Explore and relive the memories from our wedding through these photos and videos.",
+    "weddingDate": "September 13, 2025",
+    "requirePassword": false,
+    "galleryPassword": "wedding2024",
+    "useHashedPassword": false,
+    "theme": "light",
+    "mediaDirRelative": "/./media",
+    "imageExtensions": [
+        "jpg"
+    ],
+    "videoExtensions": [
+        "mp4"
+    ],
+    "slider": {
+        "enabled": true,
+        "autoplay": true,
+        "autoplayDelay": 3000,
+        "effect": "slide",
+        "speed": 1200,
+        "showNavigation": false,
+        "showPagination": false,
+        "loop": true,
+        "slidesCount": 2,
+        "showTitle": true,
+        "showDate": false,
+        "showMessage": true,
+        "overlayOpacity": 0.8
+    },
+    "itemsPerPage": 20,
+    "autoSyncEnabled": false,
+    "autoSyncLimit": 20,
+    "autoCleanupEnabled": false,
+    "autoCleanupInterval": 3600,
+    "autoCleanupLimit": 5,
+    "thumbnailWidth": 1200,
+    "thumbnailHeight": 900,
+    "thumbnailQuality": 85,
+    "webOptimizedWidth": 2000,
+    "webOptimizedHeight": 2000,
+    "webOptimizedQuality": 90,
+    "cacheDuration": 3600,
+    "maxFileSize": 20971520
+}
