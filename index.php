@@ -2,13 +2,18 @@
 /**
  * Luxe Wedding Gallery - ULTRA OPTIMIZED with Web-Optimized Images
  * Version 2.2 - Enhanced with separate web-optimized and download versions
+ *
+ * MODIFIED: Now uses ConfigManager.php to load settings from config.json
  */
 
 session_start();
 
 require_once __DIR__ . '/ErrorLogger.php';
+require_once __DIR__ . '/ConfigManager.php'; // NEW: Include ConfigManager
 
-$config = include __DIR__ . "/config.php";
+$configManager = ConfigManager::getInstance(); // NEW: Get ConfigManager instance
+$config = $configManager->getAll(); // NEW: Load config from manager
+
 ini_set('memory_limit', '512M');
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -152,7 +157,7 @@ if ($config['requirePassword']) {
 $galleryTitle = $config['galleryTitle'];
 $welcomeMessage = $config['welcomeMessage'];
 $weddingDate = $config['weddingDate'];
-$mediaDir = $config['mediaDir'];
+$mediaDir = $config['mediaDir']; // This is now the absolute path resolved by ConfigManager
 $thumbDir = $mediaDir . '/thumbnails';
 $webOptimizedDir = $mediaDir . '/web-optimized';
 $imageExtensions = $config['imageExtensions'];
@@ -160,7 +165,7 @@ $videoExtensions = $config['videoExtensions'];
 $galleryError = '';
 $theme = $config['theme'] ?? 'light';
 
-// Load slider configuration from config.php
+// Load slider configuration from config.json
 $sliderConfig = $config['slider'] ?? [
     'enabled' => true,
     'autoplay' => true,
@@ -691,32 +696,26 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="<?= htmlspecialchars($welcomeMessage, ENT_QUOTES, 'UTF-8') ?>">
   
-  <!-- DNS Prefetch & Preconnect for Performance -->
   <link rel="dns-prefetch" href="https://fonts.googleapis.com">
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   
-  <!-- Fonts with display=swap for better performance -->
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
   
-  <!-- Critical CSS - Inline for performance -->
   <style>
     /* Prevent flash of unstyled content */
     body { opacity: 0; transition: opacity 0.3s ease; }
     body.loaded { opacity: 1; }
   </style>
   
-  <!-- Main Stylesheet -->
   <link rel="preload" href="styles.css" as="style">
   <link rel="stylesheet" href="styles.css">
   
-  <!-- Swiper CSS -->
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" as="style">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
   
-  <!-- GLightbox CSS -->
   <link rel="preload" href="https://cdn.jsdelivr.net/npm/glightbox@3.2.0/dist/css/glightbox.min.css" as="style">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox@3.2.0/dist/css/glightbox.min.css">
 </head>
@@ -763,7 +762,6 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
 
   <main class="<?= !$isHomePage ? 'no-slider' : '' ?>">
     <?php if ($isHomePage && !empty($sliderImages) && $sliderConfig['enabled']): ?>
-    <!-- WEDDING SLIDER - Uses web-optimized images -->
     <div class="hero-slider" data-overlay-opacity="<?= $sliderConfig['overlayOpacity'] ?>">
       <div class="swiper" id="wedding-slider">
         <div class="swiper-wrapper">
@@ -845,7 +843,6 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
     <a href="https://dreamgraphers.net" target="_blank" class="footer-brand" rel="noopener">DREAMGRAPHERS</a>
   </footer>
 
-  <!-- Inline theme init to prevent flash -->
   <script>
     (function() {
       const savedTheme = localStorage.getItem('galleryTheme') || 'light';
@@ -855,10 +852,8 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
     })();
   </script>
 
-  <!-- Swiper JS -->
   <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js" defer></script>
   
-  <!-- GLightbox JS -->
   <script src="https://cdn.jsdelivr.net/npm/glightbox@3.2.0/dist/js/glightbox.min.js" defer></script>
   
   <script>

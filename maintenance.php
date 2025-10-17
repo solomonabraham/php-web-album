@@ -4,15 +4,19 @@
  * Cleans up orphaned images and syncs new images
  * Now supports web-optimized images for faster lightbox loading
  * Run manually or via cron job
+ * * MODIFIED: Now uses ConfigManager.php to load settings from config.json
  */
 
 set_time_limit(0); // No timeout
 ini_set('memory_limit', '1G');
 
 require_once __DIR__ . '/ErrorLogger.php';
-$config = include __DIR__ . "/config.php";
+require_once __DIR__ . '/ConfigManager.php'; // NEW: Include ConfigManager
 
-$mediaDir = $config['mediaDir'];
+$configManager = ConfigManager::getInstance(); // NEW: Get ConfigManager instance
+$config = $configManager->getAll(); // NEW: Load config from manager
+
+$mediaDir = $config['mediaDir']; // This is the absolute path resolved by ConfigManager
 $thumbDir = $mediaDir . '/thumbnails';
 $webOptimizedDir = $mediaDir . '/web-optimized';
 $imageExtensions = $config['imageExtensions'];
@@ -376,6 +380,12 @@ ErrorLogger::info('Maintenance completed', [
 // ============================================
 
 function createThumbnail($source, $dest, $maxWidth = 1200, $maxHeight = 900, $quality = 85) {
+    // Note: The configuration values are fetched directly from the $config array
+    global $config;
+    $maxWidth = $config['thumbnailWidth'] ?? $maxWidth;
+    $maxHeight = $config['thumbnailHeight'] ?? $maxHeight;
+    $quality = $config['thumbnailQuality'] ?? $quality;
+    
     if (!file_exists($source)) return false;
     
     try {
@@ -438,7 +448,8 @@ function createWebOptimizedImage($source, $dest) {
     $maxHeight = $config['webOptimizedHeight'] ?? 2000;
     $quality = $config['webOptimizedQuality'] ?? 82;
     
-    return createThumbnail($source, $dest, $maxWidth, $maxHeight, $quality);
+    // Use the generic createThumbnail logic with web-optimized settings
+    return createThumbnail($source, $dest, $maxWidth, $maxHeight, $quality); 
 }
 
 function createVideoThumbnail($source, $dest) {
