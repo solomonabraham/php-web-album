@@ -2,8 +2,7 @@
 /**
  * ConfigManager Class
  * Handles loading, saving, and accessing configuration from a JSON file.
- * This file replaces the original config.php
- * * MODIFIED: Path updated to look in the 'config/' subdirectory.
+ * * MODIFIED: Added SmartCrop configuration defaults.
  */
 
 class ConfigManager {
@@ -12,7 +11,7 @@ class ConfigManager {
     private $jsonFile;
     private $baseDir;
 
-    private function __construct() { // Removed parameter as it's now hardcoded for better organization
+    private function __construct() {
         $this->baseDir = __DIR__;
         // UPDATED: Set the new path to config/config.json
         $this->jsonFile = $this->baseDir . '/config/config.json'; 
@@ -42,7 +41,7 @@ class ConfigManager {
             return true;
         }
 
-        $content = file_get_contents($this->jsonFile);
+        $content = @file_get_contents($this->jsonFile);
         $data = json_decode($content, true);
 
         if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
@@ -50,7 +49,8 @@ class ConfigManager {
             return false;
         }
 
-        $this->config = $data;
+        // Merge loaded config with defaults to ensure new keys exist
+        $this->config = array_merge($this->getDefaultConfig(), $data);
         $this->resolvePaths();
         return true;
     }
@@ -79,6 +79,9 @@ class ConfigManager {
         // Remove derived absolute path before saving to keep JSON file clean
         $dataToSave = $this->config;
         unset($dataToSave['mediaDir']);
+        
+        // Remove derived config keys that shouldn't be saved (like SmartCrop defaults if we didn't add them to the editor)
+        // Ensure all keys that are not explicitly updated are retained by merging with old config before saving.
 
         // Ensure a relative path exists for saving
         if (!isset($dataToSave['mediaDirRelative'])) {
@@ -97,7 +100,7 @@ class ConfigManager {
         }
         
         // Ensure file is writable
-        return file_put_contents($this->jsonFile, $jsonContent, LOCK_EX) !== false;
+        return @file_put_contents($this->jsonFile, $jsonContent, LOCK_EX) !== false;
     }
 
     /**
@@ -113,7 +116,6 @@ class ConfigManager {
      * @return array
      */
     private function getDefaultConfig() {
-        // This array serves as a reliable fallback if config.json is corrupted or missing.
         return [
             "galleryTitle" => "Melvin & Elizabath",
             "welcomeMessage" => "Welcome to our special day! Thank you for being part of our celebration. Browse and enjoy the photos & videos from our wedding.",
@@ -153,7 +155,12 @@ class ConfigManager {
             "webOptimizedHeight" => 2000,
             "webOptimizedQuality" => 82,
             "cacheDuration" => 3600,
-            "maxFileSize" => 524288000
+            "maxFileSize" => 524288000,
+            
+            // --- NEW: SMARTCROP CONFIGURATION ---
+            "smartCropMethod" => "auto", // 'auto', 'entropy', 'center'
+            "smartCropUseRuleOfThirds" => true,
+            "smartCropMinEntropyThreshold" => 0.5 
         ];
     }
 }

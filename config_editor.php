@@ -3,6 +3,7 @@
  * Wedding Gallery Configuration Editor (Web Editable)
  * Uses ConfigManager to read/write config.json
  * NOTE: This file is NOT secure and should be protected (e.g., via .htaccess or by implementing login logic).
+ * * MODIFIED: Added SmartCrop configuration fields.
  */
 
 require_once __DIR__ . '/ConfigManager.php';
@@ -64,8 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newConfig['webOptimizedWidth'] = (int)($_POST['webOptimizedWidth'] ?? $newConfig['webOptimizedWidth']);
     $newConfig['webOptimizedHeight'] = (int)($_POST['webOptimizedHeight'] ?? $newConfig['webOptimizedHeight']);
     $newConfig['webOptimizedQuality'] = (int)($_POST['webOptimizedQuality'] ?? $newConfig['webOptimizedQuality']);
+    
+    // --- 8. SMARTCROP CONFIGURATION (NEW) ---
+    $newConfig['smartCropMethod'] = $_POST['smartCropMethod'] ?? 'auto';
+    $newConfig['smartCropUseRuleOfThirds'] = isset($_POST['smartCropUseRuleOfThirds']);
+    $newConfig['smartCropMinEntropyThreshold'] = (float)($_POST['smartCropMinEntropyThreshold'] ?? 0.5);
 
-    // --- 8. SLIDER CONFIGURATION (Nested Fields) ---
+    // --- 9. SLIDER CONFIGURATION (Nested Fields) ---
     $sliderConfig = $newConfig['slider'] ?? [];
     $sliderConfig['enabled'] = isset($_POST['slider_enabled']);
     $sliderConfig['autoplay'] = isset($_POST['slider_autoplay']);
@@ -110,6 +116,7 @@ $currentMaxFileSizeMB = bytesToMB($config['maxFileSize'] ?? 524288000);
         .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
         h1 { border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-bottom: 20px; }
         h2 { margin-top: 30px; border-left: 5px solid #d4af37; padding-left: 10px; margin-bottom: 15px; }
+        h3 { margin-top: 20px; color: #333; }
         label { display: block; margin-top: 10px; font-weight: bold; }
         input[type="text"], input[type="number"], input[type="url"], input[type="password"], textarea, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
         input[type="checkbox"] { margin-right: 10px; transform: scale(1.2); }
@@ -227,6 +234,33 @@ $currentMaxFileSizeMB = bytesToMB($config['maxFileSize'] ?? 524288000);
                 <div>
                     <label for="autoCleanupLimit">Max Images to Clean Per Check</label>
                     <input type="number" id="autoCleanupLimit" name="autoCleanupLimit" value="<?= htmlspecialchars($config['autoCleanupLimit'] ?? 5) ?>" min="1">
+                </div>
+            </div>
+            
+            <h2>🖼️ SmartCrop Configuration</h2>
+            <p class="note">These settings control how the gallery thumbnails are intelligently cropped to focus on the most important details.</p>
+
+            <div class="input-group">
+                <div>
+                    <label for="smartCropMethod">Smart Crop Method</label>
+                    <select id="smartCropMethod" name="smartCropMethod">
+                        <option value="auto" <?= ($config['smartCropMethod'] ?? 'auto') === 'auto' ? 'selected' : '' ?>>Auto (ImageMagick/Entropy)</option>
+                        <option value="entropy" <?= ($config['smartCropMethod'] ?? 'auto') === 'entropy' ? 'selected' : '' ?>>Entropy (Detail-Focused)</option>
+                        <option value="center" <?= ($config['smartCropMethod'] ?? 'auto') === 'center' ? 'selected' : '' ?>>Center (Simple Crop)</option>
+                    </select>
+                    <p class="note">**Auto** uses ImageMagick if available, or falls back to Entropy.</p>
+                </div>
+                <div>
+                    <label>
+                        <input type="checkbox" name="smartCropUseRuleOfThirds" <?= ($config['smartCropUseRuleOfThirds'] ?? true) ? 'checked' : '' ?>>
+                        Apply Rule of Thirds Bonus
+                    </label>
+                    <p class="note">Gives priority to content that aligns with classic compositional rules.</p>
+                </div>
+                <div>
+                    <label for="smartCropMinEntropyThreshold">Min Entropy Threshold (0.0 - 1.0)</label>
+                    <input type="number" id="smartCropMinEntropyThreshold" name="smartCropMinEntropyThreshold" value="<?= htmlspecialchars($config['smartCropMinEntropyThreshold'] ?? 0.5) ?>" step="0.1" min="0.1" max="1.0">
+                    <p class="note">Higher value means crop needs to find more *detail* to be considered.</p>
                 </div>
             </div>
 

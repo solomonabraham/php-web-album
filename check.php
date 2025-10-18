@@ -3,15 +3,21 @@
  * Wedding Gallery - System Check & Diagnostic Tool
  * Comprehensive system requirements and configuration checker
  * Version 1.0
+ *
+ * MODIFIED: Uses ConfigManager instead of config.php include.
  */
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Load configuration
-$config = @include __DIR__ . '/config.php';
+require_once __DIR__ . '/ConfigManager.php'; // NEW: Include ConfigManager
+
+// Load configuration using the manager
+$configManager = ConfigManager::getInstance();
+$config = $configManager->getAll();
+
 if (!$config) {
-    die("ERROR: config.php not found or invalid!");
+    die("ERROR: Configuration data could not be loaded from ConfigManager!");
 }
 
 // Initialize results
@@ -177,10 +183,12 @@ if ($logsDirExists) {
 
 $requiredFiles = [
     'index.php',
-    'config.php',
+    'ConfigManager.php', // Updated to ConfigManager
     'ErrorLogger.php',
     'maintenance.php',
-    'styles.css'
+    'styles.css',
+    'SmartCrop.php', // Added SmartCrop
+    'ImageProcessor.php' // Added ImageProcessor
 ];
 
 foreach ($requiredFiles as $file) {
@@ -384,8 +392,8 @@ $htaccessExists = file_exists(__DIR__ . '/.htaccess');
 $info[] = ".htaccess: " . ($htaccessExists ? 'Present' : 'Not Found (Consider adding for security)');
 
 // Check if sensitive files are accessible
-$sensitiveFiles = ['config.php', 'ErrorLogger.php'];
-$info[] = "Security Note: Ensure config.php and ErrorLogger.php are not directly accessible via browser";
+$sensitiveFiles = ['ConfigManager.php', 'ErrorLogger.php'];
+$info[] = "Security Note: Ensure ConfigManager.php and ErrorLogger.php are not directly accessible via browser";
 
 // ============================================
 // RECOMMENDATIONS
@@ -943,7 +951,7 @@ if (isset($_GET['fix_result'])) {
     <div class="container">
         <div class="header">
             <h1>🔍 System Diagnostic Check</h1>
-            <p>Wedding Gallery v2.2 - System Requirements & Configuration</p>
+            <p>Wedding Gallery v2.3 - System Requirements & Configuration</p>
             <span class="status-badge status-<?= $overallStatus ?>">
                 <?php
                     echo match($overallStatus) {
@@ -957,14 +965,12 @@ if (isset($_GET['fix_result'])) {
         </div>
         
         <div class="content">
-            <!-- Fix Result Message -->
             <?php if ($fixResultMessage): ?>
             <div class="fix-result <?= $fixResultType ?>">
                 <?= htmlspecialchars($fixResultMessage) ?>
             </div>
             <?php endif; ?>
             
-            <!-- Summary -->
             <div class="summary-grid">
                 <div class="summary-card">
                     <div class="summary-value"><?= $passedChecks ?>/<?= $totalChecks ?></div>
@@ -984,7 +990,6 @@ if (isset($_GET['fix_result'])) {
                 </div>
             </div>
             
-            <!-- Auto-Fix Section -->
             <?php if (!empty($autoFixAvailable)): ?>
             <div class="autofix-section">
                 <h3>🔧 Quick Fixes Available</h3>
@@ -1003,7 +1008,6 @@ if (isset($_GET['fix_result'])) {
                 </form>
                 <?php endforeach; ?>
                 
-                <!-- Additional Quick Actions -->
                 <form method="post" style="margin: 0;">
                     <div class="autofix-item">
                         <div class="autofix-description">
@@ -1028,18 +1032,16 @@ if (isset($_GET['fix_result'])) {
             </div>
             <?php endif; ?>
             
-            <!-- Quick Actions -->
             <div class="section">
                 <h2>⚡ Quick Actions</h2>
                 <div class="quick-actions">
                     <a href="index.php" class="quick-action-btn">🏠 Go to Gallery</a>
                     <a href="maintenance.php" class="quick-action-btn">🔧 Run Maintenance</a>
                     <a href="?refresh=1" class="quick-action-btn">🔄 Refresh Check</a>
-                    <a href="config.php" class="quick-action-btn">⚙️ View Config</a>
+                    <a href="config_editor.php" class="quick-action-btn">⚙️ Edit Config</a>
                 </div>
             </div>
             
-            <!-- Critical Errors -->
             <?php if (!empty($errors)): ?>
             <div class="section">
                 <h2>❌ Critical Issues</h2>
@@ -1052,7 +1054,6 @@ if (isset($_GET['fix_result'])) {
             </div>
             <?php endif; ?>
             
-            <!-- System Requirements -->
             <div class="section">
                 <h2>⚙️ System Requirements</h2>
                 <?php foreach ($checks as $check): ?>
@@ -1065,7 +1066,6 @@ if (isset($_GET['fix_result'])) {
                 <?php endforeach; ?>
             </div>
             
-            <!-- Warnings -->
             <?php if (!empty($warnings)): ?>
             <div class="section">
                 <h2>⚠️ Warnings</h2>
@@ -1080,7 +1080,6 @@ if (isset($_GET['fix_result'])) {
             </div>
             <?php endif; ?>
             
-            <!-- System Information -->
             <?php if (!empty($info)): ?>
             <div class="section">
                 <h2>ℹ️ System Information</h2>
@@ -1090,7 +1089,6 @@ if (isset($_GET['fix_result'])) {
             </div>
             <?php endif; ?>
             
-            <!-- Albums -->
             <?php if (!empty($albums)): ?>
             <div class="section">
                 <h2>📁 Album Overview</h2>
@@ -1109,7 +1107,6 @@ if (isset($_GET['fix_result'])) {
             </div>
             <?php endif; ?>
             
-            <!-- Recommendations -->
             <?php if (!empty($recommendations)): ?>
             <div class="section">
                 <h2>💡 Recommendations</h2>

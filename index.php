@@ -1,18 +1,19 @@
 <?php
 /**
  * Luxe Wedding Gallery - ULTRA OPTIMIZED with Web-Optimized Images
- * Version 2.2 - Enhanced with separate web-optimized and download versions
+ * Version 2.3 - Refactored with ImageProcessor and SmartCrop
  *
- * MODIFIED: Now uses ConfigManager.php to load settings from config.json
+ * MODIFIED: Now uses ImageProcessor.php for all image generation.
  */
 
 session_start();
 
 require_once __DIR__ . '/ErrorLogger.php';
-require_once __DIR__ . '/ConfigManager.php'; // NEW: Include ConfigManager
+require_once __DIR__ . '/ConfigManager.php';
+require_once __DIR__ . '/ImageProcessor.php'; // NEW: Include ImageProcessor
 
-$configManager = ConfigManager::getInstance(); // NEW: Get ConfigManager instance
-$config = $configManager->getAll(); // NEW: Load config from manager
+$configManager = ConfigManager::getInstance();
+$config = $configManager->getAll();
 
 ini_set('memory_limit', '512M');
 error_reporting(E_ALL);
@@ -157,7 +158,7 @@ if ($config['requirePassword']) {
 $galleryTitle = $config['galleryTitle'];
 $welcomeMessage = $config['welcomeMessage'];
 $weddingDate = $config['weddingDate'];
-$mediaDir = $config['mediaDir']; // This is now the absolute path resolved by ConfigManager
+$mediaDir = $config['mediaDir'];
 $thumbDir = $mediaDir . '/thumbnails';
 $webOptimizedDir = $mediaDir . '/web-optimized';
 $imageExtensions = $config['imageExtensions'];
@@ -182,16 +183,18 @@ $sliderConfig = $config['slider'] ?? [
     'overlayOpacity' => 0.5,
 ];
 
-define('MAX_FILE_SIZE', $config['maxFileSize']);
-define('THUMB_WIDTH', $config['thumbnailWidth']);
-define('THUMB_HEIGHT', $config['thumbnailHeight']);
-define('THUMB_QUALITY', $config['thumbnailQuality']);
-define('WEB_OPTIMIZED_WIDTH', $config['webOptimizedWidth'] ?? 2000);
-define('WEB_OPTIMIZED_HEIGHT', $config['webOptimizedHeight'] ?? 2000);
-define('WEB_OPTIMIZED_QUALITY', $config['webOptimizedQuality'] ?? 82);
+// Constants needed for other parts of the code
 define('CACHE_FILE', __DIR__ . '/cache/gallery_cache.json');
 define('CACHE_DURATION', $config['cacheDuration']);
 define('ITEMS_PER_PAGE', $config['itemsPerPage']);
+
+// NEW: Instantiate ImageProcessor
+$imageProcessor = new ImageProcessor($config);
+
+if (!is_writable($thumbDir) || !is_writable($webOptimizedDir)) {
+    $galleryError = "Image directories are not writable. Please check permissions.";
+    ErrorLogger::critical("Image directories not writable", ['thumb' => $thumbDir, 'web' => $webOptimizedDir]);
+}
 
 // ===============================================
 // CACHE SYSTEM FOR ULTRA-FAST LOADING
@@ -199,7 +202,7 @@ define('ITEMS_PER_PAGE', $config['itemsPerPage']);
 function getCacheDir() {
     $cacheDir = __DIR__ . '/cache';
     if (!is_dir($cacheDir)) {
-        mkdir($cacheDir, 0755, true);
+        @mkdir($cacheDir, 0755, true);
     }
     return $cacheDir;
 }
@@ -216,7 +219,7 @@ function getCachedGalleryData() {
 
 function saveCachedGalleryData($data) {
     getCacheDir();
-    file_put_contents(CACHE_FILE, json_encode($data, JSON_PRETTY_PRINT));
+    @file_put_contents(CACHE_FILE, json_encode($data, JSON_PRETTY_PRINT));
 }
 
 // --- HELPER FUNCTIONS ---
@@ -242,139 +245,6 @@ function isValidVideoFile($filePath, $allowedExtensions) {
     finfo_close($finfo);
     
     return str_starts_with($mimeType, 'video/');
-}
-
-// Auto-fix directories
-if (!is_dir($thumbDir)) {
-    mkdir($thumbDir, 0755, true);
-}
-
-if (!is_dir($webOptimizedDir)) {
-    mkdir($webOptimizedDir, 0755, true);
-}
-
-if (!is_writable($thumbDir)) {
-    @chmod($thumbDir, 0755);
-}
-
-if (!is_writable($webOptimizedDir)) {
-    @chmod($webOptimizedDir, 0755);
-}
-
-if (!is_writable($thumbDir) || !is_writable($webOptimizedDir)) {
-    $galleryError = "Image directories are not writable. Please check permissions.";
-    ErrorLogger::critical("Image directories not writable", ['thumb' => $thumbDir, 'web' => $webOptimizedDir]);
-}
-
-// ===============================================
-// OPTIMIZED IMAGE CREATION FUNCTIONS
-// ===============================================
-function createThumbnail($source, $dest, $maxWidth = THUMB_WIDTH, $maxHeight = THUMB_HEIGHT, $quality = THUMB_QUALITY) {
-    if (!file_exists($source)) return false;
-    
-    if (file_exists($dest) && filemtime($dest) >= filemtime($source)) {
-        return $dest;
-    }
-    
-    $fileSize = @filesize($source);
-    if ($fileSize === false || $fileSize > MAX_FILE_SIZE) return false;
-    
-    if (!file_exists(dirname($dest))) {
-        if (!mkdir(dirname($dest), 0755, true)) return false;
-    }
-    
-    try {
-        $imageInfo = @getimagesize($source);
-        if (!$imageInfo) return false;
-        
-        list($width, $height, $type) = $imageInfo;
-        if ($width == 0 || $height == 0) return false;
-        
-        $ratio = min($maxWidth/$width, $maxHeight/$height);
-        $newWidth = (int)($width * $ratio);
-        $newHeight = (int)($height * $ratio);
-        
-        $thumb = imagecreatetruecolor($newWidth, $newHeight);
-        if ($thumb === false) return false;
-        
-        imagesetinterpolation($thumb, IMG_BICUBIC_FIXED);
-        imagealphablending($thumb, false);
-        imagesavealpha($thumb, true);
-        
-        switch ($type) {
-            case IMAGETYPE_JPEG:
-                $img = @imagecreatefromjpeg($source);
-                break;
-            case IMAGETYPE_PNG:
-                $img = @imagecreatefrompng($source);
-                break;
-            case IMAGETYPE_GIF:
-                $img = @imagecreatefromgif($source);
-                break;
-            case IMAGETYPE_WEBP:
-                $img = @imagecreatefromwebp($source);
-                break;
-            default:
-                imagedestroy($thumb);
-                return false;
-        }
-        
-        if ($img === false) {
-            imagedestroy($thumb);
-            return false;
-        }
-        
-        imagecopyresampled($thumb, $img, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-        
-        $result = imagejpeg($thumb, $dest, $quality);
-        
-        imagedestroy($img);
-        imagedestroy($thumb);
-        
-        return $result ? $dest : false;
-        
-    } catch (Exception $e) {
-        ErrorLogger::error("Thumbnail error: " . $e->getMessage());
-        return false;
-    }
-}
-
-function createWebOptimizedImage($source, $dest) {
-    return createThumbnail($source, $dest, WEB_OPTIMIZED_WIDTH, WEB_OPTIMIZED_HEIGHT, WEB_OPTIMIZED_QUALITY);
-}
-
-function createVideoThumbnail($source, $dest) {
-    if (!file_exists($source)) return false;
-    
-    if (file_exists($dest) && filemtime($dest) >= filemtime($source)) {
-        return $dest;
-    }
-    
-    if (!file_exists(dirname($dest))) {
-        if (!mkdir(dirname($dest), 0755, true)) return false;
-    }
-    
-    $ffmpegPath = trim(shell_exec('which ffmpeg 2>/dev/null'));
-    if (empty($ffmpegPath)) {
-        ErrorLogger::warning("FFmpeg not found - cannot create video thumbnails");
-        return false;
-    }
-    
-    $command = sprintf(
-        '%s -i %s -ss 00:00:01.000 -vframes 1 -vf scale=1200:-1 -q:v 2 -y %s 2>&1',
-        escapeshellarg($ffmpegPath),
-        escapeshellarg($source),
-        escapeshellarg($dest)
-    );
-    
-    $output = shell_exec($command);
-    
-    if (file_exists($dest) && filesize($dest) > 0) {
-        return $dest;
-    }
-    
-    ErrorLogger::error("Video thumbnail failed", ['source' => $source, 'output' => $output]);
-    return false;
 }
 
 // ===============================================
@@ -418,7 +288,7 @@ if ($cachedData && isset($cachedData['allFiles'], $cachedData['albums'])) {
                     $isImage = in_array($ext, $imageExtensions) && isValidImageFile($filePath, $imageExtensions);
                     $isVideo = in_array($ext, $videoExtensions) && isValidVideoFile($filePath, $videoExtensions);
                     
-                    if ($isImage && $fileSize > MAX_FILE_SIZE) continue;
+                    if ($isImage && $fileSize > $config['maxFileSize']) continue;
                     
                     if ($isImage || $isVideo) {
                         $thumbAlbumDir = "$thumbDir/$albumName";
@@ -480,9 +350,9 @@ if ($autoSyncEnabled) {
             $webOptimizedPath = urldecode($webOptimizedPath);
             
             if ($file['type'] === 'image') {
-                // Generate thumbnail if missing
+                // Generate thumbnail if missing (uses SmartCrop via ImageProcessor)
                 if (!($file['thumbExists'] ?? false)) {
-                    if (createThumbnail($sourcePath, $thumbPath)) {
+                    if ($imageProcessor->createThumbnail($sourcePath, $thumbPath)) {
                         $file['thumbExists'] = true;
                         $generatedCount++;
                     }
@@ -490,7 +360,7 @@ if ($autoSyncEnabled) {
                 
                 // Generate web-optimized if missing
                 if (!($file['webOptimizedExists'] ?? false) && $generatedCount < $autoSyncLimit) {
-                    if (createWebOptimizedImage($sourcePath, $webOptimizedPath)) {
+                    if ($imageProcessor->createWebOptimizedImage($sourcePath, $webOptimizedPath)) {
                         $file['webOptimizedExists'] = true;
                         $generatedCount++;
                     }
@@ -498,10 +368,10 @@ if ($autoSyncEnabled) {
             } elseif ($file['type'] === 'video') {
                 // Generate thumbnail for video
                 if (!($file['thumbExists'] ?? false)) {
-                    if (createVideoThumbnail($sourcePath, $thumbPath)) {
+                    if ($imageProcessor->createVideoThumbnail($sourcePath, $thumbPath)) {
                         $file['thumbExists'] = true;
                         // Copy thumbnail as web-optimized for videos
-                        if (copy($thumbPath, $webOptimizedPath)) {
+                        if (@copy($thumbPath, $webOptimizedPath)) {
                             $file['webOptimizedExists'] = true;
                         }
                         $generatedCount++;
@@ -680,11 +550,12 @@ if ($isHomePage && !empty($allFiles) && $sliderConfig['enabled']) {
     if (count($imageFiles) > 0) {
         $imageFiles = array_values($imageFiles);
         $count = min($sliderConfig['slidesCount'], count($imageFiles));
-        $randomKeys = array_rand($imageFiles, $count);
-        if (!is_array($randomKeys)) $randomKeys = [$randomKeys];
-        foreach ($randomKeys as $key) {
-            $sliderImages[] = $imageFiles[$key];
-        }
+        // Use a mix of recent and random images for the slider
+        $recentImages = array_slice($imageFiles, 0, floor($count / 2));
+        $randomImages = array_slice($imageFiles, floor($count / 2));
+        shuffle($randomImages);
+        $sliderImages = array_merge($recentImages, array_slice($randomImages, 0, $count - count($recentImages)));
+        
     }
 }
 ?>

@@ -4,17 +4,21 @@
  * Cleans up orphaned images and syncs new images
  * Now supports web-optimized images for faster lightbox loading
  * Run manually or via cron job
- * * MODIFIED: Now uses ConfigManager.php to load settings from config.json
+ * * MODIFIED: Now uses ImageProcessor.php for all image generation.
  */
 
 set_time_limit(0); // No timeout
 ini_set('memory_limit', '1G');
 
 require_once __DIR__ . '/ErrorLogger.php';
-require_once __DIR__ . '/ConfigManager.php'; // NEW: Include ConfigManager
+require_once __DIR__ . '/ConfigManager.php';
+require_once __DIR__ . '/ImageProcessor.php'; // NEW: Include ImageProcessor
 
-$configManager = ConfigManager::getInstance(); // NEW: Get ConfigManager instance
-$config = $configManager->getAll(); // NEW: Load config from manager
+$configManager = ConfigManager::getInstance();
+$config = $configManager->getAll();
+
+// NEW: Instantiate ImageProcessor
+$imageProcessor = new ImageProcessor($config);
 
 $mediaDir = $config['mediaDir']; // This is the absolute path resolved by ConfigManager
 $thumbDir = $mediaDir . '/thumbnails';
@@ -40,7 +44,7 @@ function output($message, $type = 'info') {
 }
 
 output("===========================================", 'info');
-output("Wedding Gallery Maintenance Tool v2.2", 'info');
+output("Wedding Gallery Maintenance Tool v2.3", 'info');
 output("===========================================", 'info');
 output("");
 
@@ -101,17 +105,6 @@ output("");
 // 2. SCAN IMAGE DIRECTORIES
 // ============================================
 output("Step 2: Scanning thumbnail and web-optimized directories...", 'info');
-
-// Create directories if they don't exist
-if (!is_dir($thumbDir)) {
-    mkdir($thumbDir, 0755, true);
-    output("Created thumbnail directory", 'success');
-}
-
-if (!is_dir($webOptimizedDir)) {
-    mkdir($webOptimizedDir, 0755, true);
-    output("Created web-optimized directory", 'success');
-}
 
 $existingThumbs = [];
 $existingWebOptimized = [];
@@ -242,11 +235,17 @@ $missingWebOptimized = [];
 foreach ($mediaFiles as $key => $mediaInfo) {
     $imageKey = $mediaInfo['album'] . '/' . $mediaInfo['thumbFile'];
     
-    if (!isset($existingThumbs[$imageKey])) {
+    // Check if thumbnail exists
+    $thumbAlbumDir = "$thumbDir/{$mediaInfo['album']}";
+    $thumbPath = "$thumbAlbumDir/{$mediaInfo['thumbFile']}";
+    if (!file_exists($thumbPath) || @filemtime($thumbPath) < @filemtime($mediaInfo['path'])) {
         $missingThumbs[] = $mediaInfo;
     }
     
-    if (!isset($existingWebOptimized[$imageKey])) {
+    // Check if web-optimized exists
+    $webOptimizedAlbumDir = "$webOptimizedDir/{$mediaInfo['album']}";
+    $webOptimizedPath = "$webOptimizedAlbumDir/{$mediaInfo['thumbFile']}";
+    if (!file_exists($webOptimizedPath) || @filemtime($webOptimizedPath) < @filemtime($mediaInfo['path'])) {
         $missingWebOptimized[] = $mediaInfo;
     }
 }
@@ -267,7 +266,7 @@ if ($totalMissing > 0) {
         $thumbAlbumDir = "$thumbDir/$albumName";
         
         if (!is_dir($thumbAlbumDir)) {
-            mkdir($thumbAlbumDir, 0755, true);
+            @mkdir($thumbAlbumDir, 0755, true);
         }
         
         $thumbPath = "$thumbAlbumDir/{$mediaInfo['thumbFile']}";
@@ -277,14 +276,14 @@ if ($totalMissing > 0) {
         }
         
         if ($mediaInfo['type'] === 'image') {
-            if (createThumbnail($mediaInfo['path'], $thumbPath)) {
+            if ($imageProcessor->createThumbnail($mediaInfo['path'], $thumbPath)) { // Use ImageProcessor
                 $generatedThumbs++;
             } else {
                 $errors++;
                 output("Failed thumbnail: {$mediaInfo['album']}/{$mediaInfo['file']}", 'error');
             }
         } elseif ($mediaInfo['type'] === 'video') {
-            if (createVideoThumbnail($mediaInfo['path'], $thumbPath)) {
+            if ($imageProcessor->createVideoThumbnail($mediaInfo['path'], $thumbPath)) { // Use ImageProcessor
                 $generatedThumbs++;
             } else {
                 $errors++;
@@ -299,7 +298,7 @@ if ($totalMissing > 0) {
         $webOptimizedAlbumDir = "$webOptimizedDir/$albumName";
         
         if (!is_dir($webOptimizedAlbumDir)) {
-            mkdir($webOptimizedAlbumDir, 0755, true);
+            @mkdir($webOptimizedAlbumDir, 0755, true);
         }
         
         $webOptimizedPath = "$webOptimizedAlbumDir/{$mediaInfo['thumbFile']}";
@@ -309,7 +308,7 @@ if ($totalMissing > 0) {
         }
         
         if ($mediaInfo['type'] === 'image') {
-            if (createWebOptimizedImage($mediaInfo['path'], $webOptimizedPath)) {
+            if ($imageProcessor->createWebOptimizedImage($mediaInfo['path'], $webOptimizedPath)) { // Use ImageProcessor
                 $generatedWebOptimized++;
             } else {
                 $errors++;
@@ -319,7 +318,7 @@ if ($totalMissing > 0) {
             // For videos, copy thumbnail as web-optimized
             $thumbPath = "$thumbDir/$albumName/{$mediaInfo['thumbFile']}";
             if (file_exists($thumbPath)) {
-                if (copy($thumbPath, $webOptimizedPath)) {
+                if (@copy($thumbPath, $webOptimizedPath)) {
                     $generatedWebOptimized++;
                 } else {
                     $errors++;
@@ -374,102 +373,6 @@ ErrorLogger::info('Maintenance completed', [
     'generated_thumbs' => $generatedThumbs ?? 0,
     'generated_web_optimized' => $generatedWebOptimized ?? 0
 ]);
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-function createThumbnail($source, $dest, $maxWidth = 1200, $maxHeight = 900, $quality = 85) {
-    // Note: The configuration values are fetched directly from the $config array
-    global $config;
-    $maxWidth = $config['thumbnailWidth'] ?? $maxWidth;
-    $maxHeight = $config['thumbnailHeight'] ?? $maxHeight;
-    $quality = $config['thumbnailQuality'] ?? $quality;
-    
-    if (!file_exists($source)) return false;
-    
-    try {
-        $imageInfo = @getimagesize($source);
-        if (!$imageInfo) return false;
-        
-        list($width, $height, $type) = $imageInfo;
-        if ($width == 0 || $height == 0) return false;
-        
-        $ratio = min($maxWidth/$width, $maxHeight/$height);
-        $newWidth = (int)($width * $ratio);
-        $newHeight = (int)($height * $ratio);
-        
-        $thumb = imagecreatetruecolor($newWidth, $newHeight);
-        if ($thumb === false) return false;
-        
-        imagesetinterpolation($thumb, IMG_BICUBIC_FIXED);
-        imagealphablending($thumb, false);
-        imagesavealpha($thumb, true);
-        
-        switch ($type) {
-            case IMAGETYPE_JPEG:
-                $img = @imagecreatefromjpeg($source);
-                break;
-            case IMAGETYPE_PNG:
-                $img = @imagecreatefrompng($source);
-                break;
-            case IMAGETYPE_GIF:
-                $img = @imagecreatefromgif($source);
-                break;
-            case IMAGETYPE_WEBP:
-                $img = @imagecreatefromwebp($source);
-                break;
-            default:
-                imagedestroy($thumb);
-                return false;
-        }
-        
-        if ($img === false) {
-            imagedestroy($thumb);
-            return false;
-        }
-        
-        imagecopyresampled($thumb, $img, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-        $result = imagejpeg($thumb, $dest, $quality);
-        
-        imagedestroy($img);
-        imagedestroy($thumb);
-        
-        return $result;
-        
-    } catch (Exception $e) {
-        return false;
-    }
-}
-
-function createWebOptimizedImage($source, $dest) {
-    global $config;
-    $maxWidth = $config['webOptimizedWidth'] ?? 2000;
-    $maxHeight = $config['webOptimizedHeight'] ?? 2000;
-    $quality = $config['webOptimizedQuality'] ?? 82;
-    
-    // Use the generic createThumbnail logic with web-optimized settings
-    return createThumbnail($source, $dest, $maxWidth, $maxHeight, $quality); 
-}
-
-function createVideoThumbnail($source, $dest) {
-    if (!file_exists($source)) return false;
-    
-    $ffmpegPath = trim(shell_exec('which ffmpeg 2>/dev/null'));
-    if (empty($ffmpegPath)) return false;
-    
-    $command = sprintf(
-        '%s -i %s -ss 00:00:01.000 -vframes 1 -vf scale=1200:-1 -q:v 2 -y %s 2>&1',
-        escapeshellarg($ffmpegPath),
-        escapeshellarg($source),
-        escapeshellarg($dest)
-    );
-    
-    shell_exec($command);
-    
-    return file_exists($dest) && filesize($dest) > 0;
-}
-
 output("Done! You can now refresh your gallery.", 'success');
 output("");
 output("Note: The gallery now uses two image versions:", 'info');
