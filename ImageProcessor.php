@@ -1,75 +1,72 @@
 <?php
 /**
- * ImageProcessor Class
- * Centralizes all image and video thumbnail generation logic.
- * Integrates SmartCrop for better visual results on the gallery grid.
- * * Version 2.3 - Refactored for OOP
+ * ImageProcessor Class - OPTIMIZED
+ * Version 2.4 - Performance Enhanced
+ * 
+ * Key Improvements:
+ * - Lazy loading of SmartCrop
+ * - Reduced file system checks
+ * - Optimized error handling
+ * - Better memory management
  */
 
 require_once __DIR__ . '/ErrorLogger.php';
-require_once __DIR__ . '/SmartCrop.php';
 
 class ImageProcessor {
     private $config;
     private $errorLogger;
+    private $smartCrop = null;
 
     public function __construct(array $config) {
         $this->config = $config;
-        // Instantiate ErrorLogger
-        $this->errorLogger = new ErrorLogger(); 
-        
-        // Auto-fix directories (moved from index.php/maintenance.php)
+        $this->errorLogger = new ErrorLogger();
         $this->autoFixDirectories();
     }
     
     /**
-     * Ensures necessary media sub-directories exist and are writable.
+     * Ensures necessary media sub-directories exist
      */
     private function autoFixDirectories() {
-        $thumbDir = $this->config['mediaDir'] . '/thumbnails';
-        $webOptimizedDir = $this->config['mediaDir'] . '/web-optimized';
+        $dirs = [
+            $this->config['mediaDir'] . '/thumbnails',
+            $this->config['mediaDir'] . '/web-optimized'
+        ];
 
-        if (!is_dir($thumbDir)) {
-            @mkdir($thumbDir, 0755, true);
+        foreach ($dirs as $dir) {
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0755, true);
+            } elseif (!is_writable($dir)) {
+                @chmod($dir, 0755);
+            }
         }
-
-        if (!is_dir($webOptimizedDir)) {
-            @mkdir($webOptimizedDir, 0755, true);
+    }
+    
+    /**
+     * Lazy load SmartCrop only when needed
+     */
+    private function getSmartCrop() {
+        if ($this->smartCrop === null) {
+            require_once __DIR__ . '/SmartCrop.php';
+            $this->smartCrop = new SmartCrop([
+                'quality' => $this->config['thumbnailQuality']
+            ], $this->errorLogger);
         }
-
-        if (!is_writable($thumbDir)) {
-            @chmod($thumbDir, 0755);
-        }
-
-        if (!is_writable($webOptimizedDir)) {
-            @chmod($webOptimizedDir, 0755);
-        }
+        return $this->smartCrop;
     }
 
     /**
-     * Creates the main thumbnail using SmartCrop logic (for the gallery grid).
-     * @param string $source Path to original file.
-     * @param string $dest Path to save thumbnail.
-     * @return string|false Path to thumbnail on success, false on failure.
+     * Creates thumbnail using SmartCrop
      */
     public function createThumbnail(string $source, string $dest): string|false {
+        // Quick validations
         if (!file_exists($source)) return false;
+        if (file_exists($dest) && filemtime($dest) >= filemtime($source)) return $dest;
         
-        if (file_exists($dest) && filemtime($dest) >= filemtime($source)) {
-            return $dest;
-        }
-
         $fileSize = @filesize($source);
         if ($fileSize === false || $fileSize > $this->config['maxFileSize']) return false;
 
-        $cropConfig = [
-            'quality' => $this->config['thumbnailQuality'],
-        ];
-
-        // Instantiate SmartCrop and use it for content-aware thumbnail generation
-        $smartCrop = new SmartCrop($cropConfig, $this->errorLogger);
-
-        if ($smartCrop->createSmartThumbnail(
+        // Use SmartCrop for intelligent cropping
+        if ($this->getSmartCrop()->createSmartThumbnail(
             $source,
             $dest,
             $this->config['thumbnailWidth'],
@@ -82,136 +79,119 @@ class ImageProcessor {
     }
 
     /**
-     * Creates a web-optimized image using proportional scaling (for lightbox).
-     * @param string $source Path to original file.
-     * @param string $dest Path to save web-optimized image.
-     * @return string|false Path to image on success, false on failure.
+     * Creates web-optimized image (proportional scaling)
      */
     public function createWebOptimizedImage(string $source, string $dest): string|false {
         if (!file_exists($source)) return false;
+        if (file_exists($dest) && filemtime($dest) >= filemtime($source)) return $dest;
         
-        if (file_exists($dest) && filemtime($dest) >= filemtime($source)) {
-            return $dest;
-        }
-        
-        // Use proportional resizing for web-optimized view
-        if ($this->createProportionalImage(
+        return $this->createProportionalImage(
             $source, 
             $dest, 
             $this->config['webOptimizedWidth'], 
             $this->config['webOptimizedHeight'], 
             $this->config['webOptimizedQuality']
-        )) {
-            return $dest;
-        }
-        
-        return false;
+        ) ? $dest : false;
     }
 
     /**
-     * Creates a video thumbnail using FFmpeg.
-     * @param string $source Path to original video file.
-     * @param string $dest Path to save thumbnail (JPG).
-     * @return string|false Path to thumbnail on success, false on failure.
+     * Creates video thumbnail using FFmpeg
      */
     public function createVideoThumbnail(string $source, string $dest): string|false {
         if (!file_exists($source)) return false;
+        if (file_exists($dest) && filemtime($dest) >= filemtime($source)) return $dest;
         
-        if (file_exists($dest) && filemtime($dest) >= filemtime($source)) {
-            return $dest;
+        // Ensure directory exists
+        $dir = dirname($dest);
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return false;
+        
+        // Check for FFmpeg
+        static $ffmpegPath = null;
+        if ($ffmpegPath === null) {
+            $ffmpegPath = trim(shell_exec('which ffmpeg 2>/dev/null'));
+            if (empty($ffmpegPath)) {
+                $this->errorLogger->warning("FFmpeg not found");
+                return false;
+            }
         }
         
-        if (!is_dir(dirname($dest))) {
-            if (!@mkdir(dirname($dest), 0755, true)) return false;
-        }
-        
-        $ffmpegPath = trim(shell_exec('which ffmpeg 2>/dev/null'));
-        if (empty($ffmpegPath)) {
-            $this->errorLogger->warning("FFmpeg not found - cannot create video thumbnails");
-            return false;
-        }
-        
+        // Generate thumbnail
         $command = sprintf(
-            '%s -i %s -ss 00:00:01.000 -vframes 1 -vf scale=%d:-1 -q:v 2 -y %s 2>&1',
+            '%s -i %s -ss 00:00:01 -vframes 1 -vf scale=%d:-1 -q:v 2 -y %s 2>&1',
             escapeshellarg($ffmpegPath),
             escapeshellarg($source),
-            // Use thumbnail width for video previews
-            $this->config['thumbnailWidth'], 
+            $this->config['thumbnailWidth'],
             escapeshellarg($dest)
         );
         
-        shell_exec($command);
+        exec($command, $output, $returnCode);
         
-        if (file_exists($dest) && @filesize($dest) > 0) {
+        if (file_exists($dest) && filesize($dest) > 0) {
             return $dest;
         }
         
-        $this->errorLogger->error("Video thumbnail failed", ['source' => $source, 'output' => $output ?? 'No output']);
+        $this->errorLogger->error("Video thumbnail failed", ['source' => basename($source)]);
         return false;
     }
     
     /**
-     * Generic GD-based proportional image creation.
+     * Generic proportional image creation
      */
-    private function createProportionalImage(string $source, string $dest, int $maxWidth, int $maxHeight, int $quality): bool {
+    private function createProportionalImage(string $source, string $dest, int $maxW, int $maxH, int $quality): bool {
         if (!file_exists($source)) return false;
         
-        if (!is_dir(dirname($dest))) {
-            if (!@mkdir(dirname($dest), 0755, true)) return false;
-        }
+        // Ensure directory exists
+        $dir = dirname($dest);
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return false;
         
         try {
-            $imageInfo = @getimagesize($source);
-            if (!$imageInfo) return false;
+            $info = @getimagesize($source);
+            if (!$info) return false;
             
-            list($width, $height, $type) = $imageInfo;
+            list($width, $height, $type) = $info;
             if ($width == 0 || $height == 0) return false;
             
-            $ratio = min($maxWidth/$width, $maxHeight/$height);
-            $newWidth = (int)($width * $ratio);
-            $newHeight = (int)($height * $ratio);
+            // Calculate new dimensions
+            $ratio = min($maxW / $width, $maxH / $height);
+            $newW = (int)($width * $ratio);
+            $newH = (int)($height * $ratio);
             
-            $thumb = imagecreatetruecolor($newWidth, $newHeight);
-            if ($thumb === false) return false;
+            // Create thumbnail
+            $thumb = imagecreatetruecolor($newW, $newH);
+            if (!$thumb) return false;
             
             imagesetinterpolation($thumb, IMG_BICUBIC_FIXED);
             imagealphablending($thumb, false);
             imagesavealpha($thumb, true);
             
-            switch ($type) {
-                case IMAGETYPE_JPEG:
-                    $img = @imagecreatefromjpeg($source);
-                    break;
-                case IMAGETYPE_PNG:
-                    $img = @imagecreatefrompng($source);
-                    break;
-                case IMAGETYPE_GIF:
-                    $img = @imagecreatefromgif($source);
-                    break;
-                case IMAGETYPE_WEBP:
-                    $img = @imagecreatefromwebp($source);
-                    break;
-                default:
-                    imagedestroy($thumb);
-                    return false;
-            }
+            // Load source image
+            $img = match($type) {
+                IMAGETYPE_JPEG => @imagecreatefromjpeg($source),
+                IMAGETYPE_PNG => @imagecreatefrompng($source),
+                IMAGETYPE_GIF => @imagecreatefromgif($source),
+                IMAGETYPE_WEBP => @imagecreatefromwebp($source),
+                default => false
+            };
             
-            if ($img === false) {
+            if (!$img) {
                 imagedestroy($thumb);
                 return false;
             }
             
-            imagecopyresampled($thumb, $img, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+            // Resize
+            imagecopyresampled($thumb, $img, 0, 0, 0, 0, $newW, $newH, $width, $height);
             
+            // Save
             $result = imagejpeg($thumb, $dest, $quality);
             
+            // Cleanup
             imagedestroy($img);
             imagedestroy($thumb);
             
             return $result;
             
         } catch (Exception $e) {
-            $this->errorLogger->error("Proportional image error: " . $e->getMessage());
+            $this->errorLogger->error("Image processing error: " . $e->getMessage());
             return false;
         }
     }
